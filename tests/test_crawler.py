@@ -56,6 +56,15 @@ class _FakePage:
     async def goto(self, _url, wait_until=None, timeout=None):
         return None
 
+    async def wait_for_load_state(self, _state, timeout=None):
+        return None
+
+    async def query_selector(self, _selector):
+        return None
+
+    async def query_selector_all(self, _selector):
+        return []
+
     async def content(self):
         return self._html
 
@@ -74,19 +83,46 @@ class _FakeContext:
 
 
 async def test_fetch_rendered_returns_extractable_html():
-    """The Playwright wrapper should return whatever rendered HTML the page yields."""
+    """The Playwright wrapper should return whatever rendered HTML the page yields,
+    plus a (possibly empty) list of discovered pagination URLs."""
     from ingest.crawler import _fetch_rendered, extract_title_and_text
 
     html = "<html><head><title>JS Loaded</title></head><body><main><p>SPA content.</p></main></body></html>"
     ctx = _FakeContext(html)
 
-    out = await _fetch_rendered(ctx, "https://x.com/a")
-    assert out == html
+    html_out, pagination_links = await _fetch_rendered(ctx, "https://x.com/a")
+    assert html_out == html
+    assert pagination_links == []
     assert ctx.opened == 1
 
-    title, text = extract_title_and_text(out)
+    title, text = extract_title_and_text(html_out)
     assert title == "JS Loaded"
     assert "SPA content." in text
+
+
+def test_normalize_url_strips_tracking_params():
+    from ingest.crawler import normalize_url
+
+    assert (
+        normalize_url("https://x.com/p?id=42&utm_source=newsletter&fbclid=abc")
+        == "https://x.com/p?id=42"
+    )
+    assert (
+        normalize_url("https://x.com/blog/post/?ref=twitter#section")
+        == "https://x.com/blog/post"
+    )
+    assert normalize_url("https://x.com/") == "https://x.com/"
+
+
+def test_is_pagination_url():
+    from ingest.crawler import is_pagination_url
+
+    assert is_pagination_url("https://x.com/blog?page=2")
+    assert is_pagination_url("https://x.com/blog?p=4")
+    assert is_pagination_url("https://x.com/blog/page/3/")
+    assert is_pagination_url("https://x.com/shop?offset=20")
+    assert not is_pagination_url("https://x.com/blog/post-1")
+    assert not is_pagination_url("https://x.com/about")
 
 
 @pytest.mark.integration

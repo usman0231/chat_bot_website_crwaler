@@ -6,7 +6,9 @@ Public API:
 
 Robots.txt and sitemap.xml are still fetched via httpx (they're static XML).
 HTML pages are fetched through a single headless Chromium browser so JS
-rendering completes before we extract text.
+rendering completes before we extract text. Pagination links (?page=2,
+/page/2/, "Next", "Load more" buttons) are discovered per-page and merged
+into the crawl queue.
 
 CLI:
     python -m ingest.crawler <url> [--max N]
@@ -18,11 +20,12 @@ import argparse
 import asyncio
 import json
 import logging
+import re
 import sys
 from collections import deque
 from pathlib import Path
-from typing import Iterable
-from urllib.parse import urljoin, urlparse
+from typing import Callable, Iterable
+from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 from urllib.robotparser import RobotFileParser
 from xml.etree import ElementTree as ET
 
@@ -45,6 +48,94 @@ _BLOCKED_RESOURCE_RE = (
 )
 
 
+# --------------------------------------------------------------------------
+# URL normalisation + pagination detection
+# --------------------------------------------------------------------------
+
+# Tracking params that shouldn't influence dedup (same content, different
+# attribution noise). Stripping them prevents crawling the same page twice
+# via different campaign links.
+_TRACKING_PARAMS = frozenset(
+    {
+        "utm_source",
+        "utm_medium",
+        "utm_campaign",
+        "utm_term",
+        "utm_content",
+        "utm_id",
+        "fbclid",
+        "gclid",
+        "mc_cid",
+        "mc_eid",
+        "ref",
+        "source",
+        "_ga",
+        "_gl",
+        "yclid",
+    }
+)
+
+
+_PAGINATION_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(p, re.IGNORECASE)
+    for p in (
+        r"[?&]page=\d+",
+        r"[?&]p=\d+",
+        r"[?&]pg=\d+",
+        r"/page/\d+/?$",
+        r"/p/\d+/?$",
+        r"[?&]offset=\d+",
+        r"[?&]start=\d+",
+    )
+)
+
+
+def is_pagination_url(url: str) -> bool:
+    """True if the URL looks like a paginated variant (page=2, /page/2/, etc.)."""
+    if not url:
+        return False
+    return any(p.search(url) for p in _PAGINATION_PATTERNS)
+
+
+def normalize_url(url: str) -> str:
+    """Aggressive normaliser:
+    * drops fragment (#section)
+    * strips tracking params (utm_*, fbclid, gclid, ref, source, …)
+    * strips trailing slash (but never the bare "https://host/")
+    Returns an empty string on unparseable input.
+    """
+    if not url:
+        return ""
+    parsed = urlparse(url)
+    if not parsed.scheme or not parsed.netloc:
+        return ""
+
+    params = [
+        (k, v)
+        for k, v in parse_qsl(parsed.query, keep_blank_values=True)
+        if k.lower() not in _TRACKING_PARAMS
+    ]
+    cleaned = parsed._replace(
+        query=urlencode(params, doseq=True),
+        fragment="",
+    )
+    out = urlunparse(cleaned)
+
+    # Preserve a trailing slash on the bare-host case so "https://x.com" and
+    # "https://x.com/" don't accidentally become identical pre-strip and then
+    # invalid post-strip.
+    if cleaned.path in ("", "/"):
+        if not cleaned.path:
+            out = urlunparse(cleaned._replace(path="/"))
+    elif out.endswith("/"):
+        out = out.rstrip("/")
+    return out
+
+
+# Back-compat alias — older code paths called this ``_normalize``.
+_normalize = normalize_url
+
+
 def _registered_domain(url: str) -> str:
     ext = tldextract.extract(url)
     return ext.top_domain_under_public_suffix.lower()
@@ -65,13 +156,6 @@ def extract_title_and_text(html: str) -> tuple[str, str]:
     return title, text
 
 
-def _normalize(url: str) -> str:
-    p = urlparse(url)
-    if not p.scheme or not p.netloc:
-        return ""
-    return p._replace(fragment="").geturl()
-
-
 def _extract_links(html: str, base_url: str) -> list[str]:
     soup = BeautifulSoup(html, "lxml")
     out = []
@@ -80,10 +164,15 @@ def _extract_links(html: str, base_url: str) -> list[str]:
         if not href or href.startswith(("mailto:", "javascript:", "tel:")):
             continue
         absolute = urljoin(base_url, href)
-        norm = _normalize(absolute)
+        norm = normalize_url(absolute)
         if norm and urlparse(norm).scheme in ("http", "https"):
             out.append(norm)
     return out
+
+
+# --------------------------------------------------------------------------
+# robots / sitemap
+# --------------------------------------------------------------------------
 
 
 async def _load_robots(client: httpx.AsyncClient, root_url: str) -> RobotFileParser:
@@ -138,8 +227,124 @@ def deduplicate(pages: Iterable[dict]) -> list[dict]:
     return out
 
 
-async def _fetch_rendered(context, url: str) -> str | None:
-    """Open a fresh page in the shared context, return rendered HTML or None."""
+# --------------------------------------------------------------------------
+# Per-page fetch with Playwright (handles "Load more" + pagination links)
+# --------------------------------------------------------------------------
+
+# Selectors are Playwright-extended CSS — `:has-text(...)` is theirs, not W3C.
+_NEXT_PAGE_SELECTORS: tuple[str, ...] = (
+    'a[rel="next"]',
+    'a:has-text("Next")',
+    'a:has-text("›")',
+    'a:has-text("»")',
+    ".pagination a.next",
+    ".next-page",
+    '[aria-label="Next page"]',
+    '[aria-label="Next"]',
+)
+
+_LOAD_MORE_SELECTORS: tuple[str, ...] = (
+    'button:has-text("Load more")',
+    'button:has-text("Show more")',
+    'a:has-text("Load more")',
+    'a:has-text("Show more")',
+    '[data-testid="load-more"]',
+)
+
+# Cap on consecutive "Load more" clicks per page so a broken/infinite-scroll
+# site can't pin one Playwright tab forever.
+_MAX_LOAD_MORE_CLICKS = 5
+
+
+async def _try_load_more(page, current_url: str) -> None:
+    """Click visible 'Load more' / 'Show more' buttons up to a small cap.
+
+    Returns once no further button is found or the cap is hit. Failures
+    (selector errors, navigation aborts) are swallowed — the worst outcome
+    is that we miss the extra content, not that we break the crawl.
+    """
+    for click_no in range(_MAX_LOAD_MORE_CLICKS):
+        clicked = False
+        for selector in _LOAD_MORE_SELECTORS:
+            try:
+                element = await page.query_selector(selector)
+            except Exception:
+                element = None
+            if element is None:
+                continue
+            try:
+                is_visible = await element.is_visible()
+            except Exception:
+                is_visible = False
+            if not is_visible:
+                continue
+            log.info(
+                "Clicking 'Load more' on %s (round %d)", current_url, click_no + 1
+            )
+            try:
+                await element.click()
+                await page.wait_for_load_state("networkidle", timeout=8000)
+                clicked = True
+                break
+            except Exception as e:
+                log.debug("load-more click failed: %s", e)
+        if not clicked:
+            return
+
+
+async def _collect_pagination_links(page, base_url: str) -> list[str]:
+    """Pull next/pagination URLs out of the rendered DOM."""
+    found: list[str] = []
+
+    # 1. Explicit "next" selectors.
+    for selector in _NEXT_PAGE_SELECTORS:
+        try:
+            element = await page.query_selector(selector)
+        except Exception:
+            element = None
+        if element is None:
+            continue
+        try:
+            href = await element.get_attribute("href")
+        except Exception:
+            href = None
+        if not href:
+            continue
+        absolute = urljoin(base_url, href)
+        norm = normalize_url(absolute)
+        if norm:
+            log.info("Found pagination link (next): %s", norm)
+            found.append(norm)
+
+    # 2. Any <a> whose href looks like a pagination variant.
+    try:
+        anchors = await page.query_selector_all("a[href]")
+    except Exception:
+        anchors = []
+    for anchor in anchors:
+        try:
+            href = await anchor.get_attribute("href")
+        except Exception:
+            href = None
+        if not href:
+            continue
+        absolute = urljoin(base_url, href)
+        if is_pagination_url(absolute):
+            norm = normalize_url(absolute)
+            if norm and norm not in found:
+                log.info("Found pagination link: %s", norm)
+                found.append(norm)
+
+    return found
+
+
+async def _fetch_rendered(context, url: str) -> tuple[str | None, list[str]]:
+    """Open a fresh page, click any "Load more" controls, then return the
+    final HTML plus a list of discovered pagination URLs.
+
+    Returns ``(None, [])`` on hard navigation failures so callers can skip
+    the URL without losing the pagination side channel.
+    """
     timeout_ms = settings.browser_timeout * 1000
     page = await context.new_page()
     try:
@@ -152,12 +357,26 @@ async def _fetch_rendered(context, url: str) -> str | None:
                 await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
             except Exception as e2:
                 log.warning("skipping %s after retry failure: %s", url, e2)
-                return None
+                return None, []
+
         try:
-            return await page.content()
+            await _try_load_more(page, url)
+        except Exception as e:
+            log.debug("_try_load_more raised on %s: %s", url, e)
+
+        try:
+            pagination_links = await _collect_pagination_links(page, url)
+        except Exception as e:
+            log.debug("_collect_pagination_links raised on %s: %s", url, e)
+            pagination_links = []
+
+        try:
+            html = await page.content()
         except Exception as e:
             log.warning("content() failed for %s: %s", url, e)
-            return None
+            return None, pagination_links
+
+        return html, pagination_links
     finally:
         try:
             await page.close()
@@ -165,11 +384,32 @@ async def _fetch_rendered(context, url: str) -> str | None:
             pass
 
 
-async def crawl(root_url: str, max_pages: int) -> list[dict]:
-    """Crawl `root_url` (same domain only), up to `max_pages`. Returns list of {url,title,text}."""
+ProgressCallback = Callable[[int, int], None]
+
+
+async def crawl(
+    root_url: str,
+    max_pages: int,
+    progress_callback: ProgressCallback | None = None,
+) -> list[dict]:
+    """Crawl `root_url` (same domain only), up to `max_pages`. Returns list of {url,title,text}.
+
+    If `progress_callback` is given, it is called as `callback(pages_crawled, pages_total)`
+    after each page is successfully fetched. `pages_total` is the best known upper bound:
+    the seed count from the sitemap (capped at `max_pages`) if we have one, otherwise
+    `max_pages` itself.
+    """
     from playwright.async_api import async_playwright
 
-    root_url = _normalize(root_url)
+    def _report(crawled: int, total: int) -> None:
+        if progress_callback is None:
+            return
+        try:
+            progress_callback(crawled, total)
+        except Exception:
+            log.debug("progress_callback raised; ignoring", exc_info=True)
+
+    root_url = normalize_url(root_url)
     if not root_url:
         return []
 
@@ -192,10 +432,15 @@ async def crawl(root_url: str, max_pages: int) -> list[dict]:
         if not seed_urls:
             seed_urls = [root_url]
 
-        queue: deque[str] = deque(_normalize(u) for u in seed_urls if _normalize(u))
+        queue: deque[str] = deque(
+            normalize_url(u) for u in seed_urls if normalize_url(u)
+        )
         seen: set[str] = set()
         results: list[dict] = []
         sem = asyncio.Semaphore(settings.crawl_concurrency)
+
+        pages_total = min(max_pages, len(queue)) if len(queue) > 1 else max_pages
+        _report(0, pages_total)
 
         playwright = await async_playwright().start()
         browser = None
@@ -203,10 +448,10 @@ async def crawl(root_url: str, max_pages: int) -> list[dict]:
             browser = await playwright.chromium.launch(headless=True)
             context = await browser.new_context(user_agent=_USER_AGENT)
 
-            async def fetch_one(u: str) -> tuple[str, str | None]:
+            async def fetch_one(u: str) -> tuple[str, str | None, list[str]]:
                 async with sem:
-                    html = await _fetch_rendered(context, u)
-                return u, html
+                    html, pagination_links = await _fetch_rendered(context, u)
+                return u, html, pagination_links
 
             while queue and len(results) < max_pages:
                 batch: list[str] = []
@@ -224,15 +469,36 @@ async def crawl(root_url: str, max_pages: int) -> list[dict]:
                     continue
 
                 fetched = await asyncio.gather(*(fetch_one(u) for u in batch))
-                for url, html in fetched:
+                for url, html, pagination_links in fetched:
+                    # Pagination links discovered while loading the page —
+                    # surface them even on pages that failed to extract.
+                    for link in pagination_links:
+                        if (
+                            link
+                            and link not in seen
+                            and same_domain(link, root_url)
+                            and allowed(link)
+                        ):
+                            queue.append(link)
+
                     if html is None:
                         continue
                     title, text = extract_title_and_text(html)
                     results.append({"url": url, "title": title, "text": text})
+                    pages_total = max(pages_total, len(results))
+                    pages_total = min(
+                        max_pages,
+                        max(pages_total, len(results) + len(queue)),
+                    )
+                    _report(len(results), pages_total)
                     if len(results) >= max_pages:
                         break
                     for link in _extract_links(html, url):
-                        if link not in seen and same_domain(link, root_url):
+                        if (
+                            link not in seen
+                            and same_domain(link, root_url)
+                            and allowed(link)
+                        ):
                             queue.append(link)
         finally:
             if browser is not None:

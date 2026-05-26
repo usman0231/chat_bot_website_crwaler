@@ -31,10 +31,29 @@ class Settings(BaseSettings):
     llm_model: str = Field(default="qwen2.5:7b")
 
     # ----- API auth -----
-    demo_api_key: str = Field(..., description="Shared API key for /bot/* endpoints")
+    demo_api_key: str = Field(..., description="Legacy/admin API key — still recognised as a fallback")
+    jwt_secret: str = Field(
+        default="dev-only-change-me-please-this-is-not-secure",
+        description="HS256 secret for user JWTs (set JWT_SECRET in .env)",
+    )
+    auth_db_path: str = Field(default="./data/auth.db")
+
+    # ----- Stripe -----
+    stripe_secret_key: str = Field(default="", description="sk_test_… or sk_live_…")
+    stripe_publishable_key: str = Field(default="")
+    stripe_webhook_secret: str = Field(default="")
+    stripe_price_pro: str = Field(default="", description="Stripe price id for the Pro tier")
+    stripe_price_enterprise: str = Field(default="")
+    app_base_url: str = Field(default="http://localhost:3000")
 
     # ----- Embeddings -----
     embed_model: str = Field(default="sentence-transformers/all-MiniLM-L6-v2")
+    # Chunked processing so large sites don't exceed ChromaDB's max batch
+    # size (a SQLite variable-limit ceiling, ~5461). chroma_batch_size is an
+    # upper bound — it's clamped down to the client's reported max at write
+    # time, so a conservative default is safe on any environment.
+    embed_batch_size: int = Field(default=512, ge=1)
+    chroma_batch_size: int = Field(default=500, ge=1)
 
     # ----- Crawler -----
     max_pages: int = Field(default=30, ge=1, le=1000)
@@ -54,6 +73,33 @@ class Settings(BaseSettings):
     host: str = Field(default="0.0.0.0")
     port: int = Field(default=8000)
     log_level: str = Field(default="info")
+
+    # ----- Voice calling -----
+    # faster-whisper config — override device to "cpu" + compute_type to "int8"
+    # on machines without an NVIDIA GPU / CUDA toolkit. Note: large-v3 on
+    # CPU+int8 is very slow (5–15s per turn) — drop back to "medium" or
+    # "small" if your hardware can't reach acceptable latency.
+    whisper_model: str = Field(default="large-v3")
+    whisper_device: str = Field(default="cuda")
+    whisper_compute_type: str = Field(default="float16")
+    whisper_initial_prompt: str = Field(
+        default="The following is a customer service conversation.",
+        description="Decoder priming prompt; biases vocabulary/style.",
+    )
+    vad_silence_ms: int = Field(default=500, ge=200, le=5000)
+    voice_sample_rate: int = Field(default=16000)
+
+    # ElevenLabs — primary TTS backend.
+    elevenlabs_api_key: str = Field(default="")
+    # Sarah — a *premade* voice that works on free/starter ElevenLabs keys.
+    # (Rachel 21m00… and the professional Serafina voice 402 on free plans,
+    # which is why bots with no per-bot voice_id used to all sound wrong.)
+    elevenlabs_default_voice: str = Field(default="EXAVITQu4vr4xnSDxMaL")  # Sarah
+    # Turbo v2.5 = faster + more natural English. Drop back to
+    # eleven_multilingual_v2 if you need stronger Urdu / other-language
+    # phonetics; turbo is English-leaning.
+    elevenlabs_model: str = Field(default="eleven_turbo_v2_5")
+    elevenlabs_output_format: str = Field(default="mp3_22050_32")
 
     @property
     def chroma_dir(self) -> Path:

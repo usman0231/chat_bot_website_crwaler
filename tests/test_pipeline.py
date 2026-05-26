@@ -50,10 +50,14 @@ def test_chunks_have_metadata():
 def test_short_pages_skipped():
     from ingest.pipeline import ingest_website
 
+    realistic = (
+        "Our team specialises in building web applications, mobile apps, and "
+        "AI-powered chatbots for small businesses. Get in touch for a quote. "
+    ) * 5
     pages = [
         {"url": "https://x.com/short", "title": "Short", "text": "tiny"},
         {"url": "https://x.com/empty", "title": "Empty", "text": ""},
-        {"url": "https://x.com/ok", "title": "OK", "text": "x" * 600},
+        {"url": "https://x.com/ok", "title": "OK", "text": realistic},
     ]
     result = ingest_website("test-bot-2", pages)
     assert result["pages"] == 1
@@ -69,8 +73,47 @@ def test_collection_reset():
     first_count = client.get_collection("reset-bot").count()
     assert first_count > 0
 
-    smaller = [{"url": "https://x.com/only", "title": "Only", "text": "y" * 600}]
+    smaller = [
+        {
+            "url": "https://x.com/only",
+            "title": "Only",
+            "text": (
+                "We offer a 30-day money-back guarantee on all plans. "
+                "Cancel at any time directly from your billing portal. "
+            )
+            * 6,
+        }
+    ]
     result = ingest_website("reset-bot", smaller)
     second_count = client.get_collection("reset-bot").count()
     assert second_count == result["chunks"]
     assert second_count < first_count
+
+
+def test_low_quality_chunks_filtered():
+    from ingest.pipeline import _is_low_quality_chunk
+
+    # Real content keeps.
+    assert not _is_low_quality_chunk(
+        "Visionara builds custom AI assistants for websites. "
+        "It crawls site content, embeds it, and answers questions "
+        "strictly from that website's text. Contact us for a quote."
+    )
+
+    # Junk drops.
+    assert _is_low_quality_chunk("Loading...")
+    assert _is_low_quality_chunk("Lorem ipsum dolor sit amet")
+    assert _is_low_quality_chunk("Price: $X — coming soon")
+    assert _is_low_quality_chunk("{{price}} per month — sign up today")
+    assert _is_low_quality_chunk("x" * 200)  # one unique char
+    assert _is_low_quality_chunk("123 456 789 012 345 678 901 234")  # numeric
+
+
+def test_extract_prices_finds_currency_strings():
+    from ingest.pipeline import _extract_prices
+
+    text = "Pro plan is $29/month, Enterprise is $99.00, ENT €120 /mo."
+    prices = _extract_prices(text)
+    assert "$29" in prices
+    assert "$99.00" in prices
+    assert "€120" in prices

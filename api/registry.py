@@ -36,3 +36,14 @@ def update_bot(bot_id: str, **fields: Any) -> None:
         entry.update(fields)
         reg[bot_id] = entry
         save_registry(reg)
+
+
+def delete_bot(bot_id: str) -> bool:
+    """Remove `bot_id` from the registry. Returns True if it existed."""
+    with _lock:
+        reg = load_registry()
+        if bot_id not in reg:
+            return False
+        del reg[bot_id]
+        save_registry(reg)
+        return True

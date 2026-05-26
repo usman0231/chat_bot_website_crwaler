@@ -1,0 +1,358 @@
+<style>
+@keyframes smoke1 {
+  0%,100% { opacity:0.9; transform: translateY(0) scaleX(1); }
+  50%      { opacity:0.5; transform: translateY(-6px) scaleX(1.2); }
+}
+@keyframes smoke2 {
+  0%,100% { opacity:0.55; transform: translateY(0) scaleX(1); }
+  50%      { opacity:0.2; transform: translateY(-8px) scaleX(0.8); }
+}
+@keyframes sparkle {
+  0%,100% { opacity:1;   transform: scale(1);   }
+  50%      { opacity:0.2; transform: scale(0.4); }
+}
+@keyframes lamp-glow {
+  0%,100% { filter: drop-shadow(0 0 4px #a855f780); }
+  50%      { filter: drop-shadow(0 0 12px #6366f1aa); }
+}
+@keyframes float {
+  0%,100% { transform: translateY(0); }
+  50%      { transform: translateY(-4px); }
+}
+@keyframes text-shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+
+.sg-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+  padding: 32px 0 24px;
+}
+
+.sg-card {
+  background: var(--color-background-primary);
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: var(--border-radius-lg);
+  padding: 28px 40px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 260px;
+}
+
+.sg-card-dark {
+  background: #0f0f1a;
+  border-color: #1e1e30;
+}
+
+.sg-label {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  letter-spacing: 0.5px;
+  align-self: flex-start;
+}
+
+.sg-label-dark { color: #6b7280; }
+
+.sg-icon-wrap {
+  animation: float 3s ease-in-out infinite;
+}
+
+.lamp-body { animation: lamp-glow 2.5s ease-in-out infinite; }
+
+.smoke-main {
+  animation: smoke1 2s ease-in-out infinite;
+  transform-origin: 30px 21px;
+}
+.smoke-left {
+  animation: smoke2 2.2s ease-in-out infinite 0.3s;
+  transform-origin: 30px 21px;
+}
+.smoke-right {
+  animation: smoke2 2.4s ease-in-out infinite 0.6s;
+  transform-origin: 30px 21px;
+}
+
+.sp1 { animation: sparkle 1.8s ease-in-out infinite 0.0s; }
+.sp2 { animation: sparkle 1.8s ease-in-out infinite 0.3s; }
+.sp3 { animation: sparkle 1.8s ease-in-out infinite 0.6s; }
+.sp4 { animation: sparkle 1.8s ease-in-out infinite 0.9s; }
+.sp5 { animation: sparkle 1.8s ease-in-out infinite 1.2s; }
+
+.sg-name {
+  font-family: var(--font-sans);
+  font-size: 26px;
+  font-weight: 500;
+  background: linear-gradient(90deg, #6366f1, #a855f7, #ec4899, #a855f7, #6366f1);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: text-shimmer 3s linear infinite;
+}
+
+.sg-tagline {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  font-family: var(--font-sans);
+}
+
+.sg-tagline-dark { color: #9ca3af; }
+
+.sg-horiz {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.sg-horiz-text { display: flex; flex-direction: column; gap: 4px; }
+
+.sg-name-sm {
+  font-family: var(--font-sans);
+  font-size: 20px;
+  font-weight: 500;
+  background: linear-gradient(90deg, #6366f1, #a855f7, #ec4899, #a855f7, #6366f1);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: text-shimmer 3s linear infinite;
+}
+
+.sg-cards-row {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.size-label {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  text-align: center;
+  margin-top: 4px;
+}
+</style>
+
+<div class="sg-wrap">
+
+<!-- PRIMARY LIGHT -->
+<div class="sg-card">
+  <span class="sg-label">Primary — light</span>
+  <div class="sg-icon-wrap">
+    <svg width="80" height="80" viewBox="0 0 80 80" role="img">
+      <title>SiteGenie lamp icon</title>
+      <defs>
+        <linearGradient id="lg1" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#6366f1"/>
+          <stop offset="50%" stop-color="#a855f7"/>
+          <stop offset="100%" stop-color="#ec4899"/>
+        </linearGradient>
+        <linearGradient id="lg2" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#818cf8"/>
+          <stop offset="100%" stop-color="#c084fc"/>
+        </linearGradient>
+      </defs>
+      <g class="lamp-body">
+        <ellipse cx="40" cy="68" rx="28" ry="7" fill="#6366f1" opacity="0.2"/>
+        <path d="M18 61 Q16 46 25 37 Q32 29 40 32 Q48 29 55 37 Q64 46 62 61 Q55 66 40 68 Q25 66 18 61Z" fill="url(#lg1)"/>
+        <path d="M60 54 Q73 50 75 56 Q73 62 60 60Z" fill="url(#lg1)"/>
+        <path d="M18 54 Q10 54 10 60 Q10 65 18 63" fill="none" stroke="url(#lg1)" stroke-width="3.5" stroke-linecap="round"/>
+      </g>
+      <g class="smoke-main">
+        <path d="M40 32 Q37 22 41 14 Q44 7 39 2" fill="none" stroke="url(#lg2)" stroke-width="3" stroke-linecap="round"/>
+      </g>
+      <g class="smoke-left">
+        <path d="M40 32 Q33 20 36 11 Q38 5 34 0" fill="none" stroke="url(#lg2)" stroke-width="2" stroke-linecap="round"/>
+      </g>
+      <g class="smoke-right">
+        <path d="M40 32 Q47 20 44 11 Q42 5 46 0" fill="none" stroke="url(#lg2)" stroke-width="2" stroke-linecap="round"/>
+      </g>
+      <circle class="sp1" cx="28" cy="14" r="3"   fill="url(#lg1)"/>
+      <circle class="sp2" cx="52" cy="9"  r="2.5" fill="#a855f7"/>
+      <circle class="sp3" cx="39" cy="0"  r="3.5" fill="url(#lg1)"/>
+      <circle class="sp4" cx="22" cy="5"  r="2"   fill="#ec4899"/>
+      <circle class="sp5" cx="56" cy="2"  r="2"   fill="#6366f1"/>
+    </svg>
+  </div>
+  <div class="sg-name">SiteGenie</div>
+  <div class="sg-tagline">Your website's AI assistant</div>
+</div>
+
+<!-- DARK VARIANT -->
+<div class="sg-card sg-card-dark">
+  <span class="sg-label sg-label-dark">Dark variant</span>
+  <div class="sg-icon-wrap">
+    <svg width="80" height="80" viewBox="0 0 80 80" role="img">
+      <title>SiteGenie lamp icon dark</title>
+      <defs>
+        <linearGradient id="lg3" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#6366f1"/>
+          <stop offset="50%" stop-color="#a855f7"/>
+          <stop offset="100%" stop-color="#ec4899"/>
+        </linearGradient>
+        <linearGradient id="lg4" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#818cf8"/>
+          <stop offset="100%" stop-color="#c084fc"/>
+        </linearGradient>
+      </defs>
+      <g class="lamp-body">
+        <ellipse cx="40" cy="68" rx="28" ry="7" fill="#4f46e5" opacity="0.35"/>
+        <path d="M18 61 Q16 46 25 37 Q32 29 40 32 Q48 29 55 37 Q64 46 62 61 Q55 66 40 68 Q25 66 18 61Z" fill="url(#lg3)"/>
+        <path d="M60 54 Q73 50 75 56 Q73 62 60 60Z" fill="url(#lg3)"/>
+        <path d="M18 54 Q10 54 10 60 Q10 65 18 63" fill="none" stroke="url(#lg3)" stroke-width="3.5" stroke-linecap="round"/>
+      </g>
+      <g class="smoke-main">
+        <path d="M40 32 Q37 22 41 14 Q44 7 39 2" fill="none" stroke="#c084fc" stroke-width="3" stroke-linecap="round"/>
+      </g>
+      <g class="smoke-left">
+        <path d="M40 32 Q33 20 36 11 Q38 5 34 0" fill="none" stroke="#c084fc" stroke-width="2" stroke-linecap="round"/>
+      </g>
+      <g class="smoke-right">
+        <path d="M40 32 Q47 20 44 11 Q42 5 46 0" fill="none" stroke="#c084fc" stroke-width="2" stroke-linecap="round"/>
+      </g>
+      <circle class="sp1" cx="28" cy="14" r="3"   fill="#818cf8"/>
+      <circle class="sp2" cx="52" cy="9"  r="2.5" fill="#a855f7"/>
+      <circle class="sp3" cx="39" cy="0"  r="3.5" fill="#ec4899"/>
+      <circle class="sp4" cx="22" cy="5"  r="2"   fill="#ec4899"/>
+      <circle class="sp5" cx="56" cy="2"  r="2"   fill="#818cf8"/>
+    </svg>
+  </div>
+  <div class="sg-name">SiteGenie</div>
+  <div class="sg-tagline sg-tagline-dark">Your website's AI assistant</div>
+</div>
+
+<!-- SIZE VARIANTS ROW -->
+<div style="display:flex; flex-direction:column; align-items:center; gap:8px;">
+  <span class="sg-label">Size variants</span>
+  <div class="sg-cards-row">
+
+    <!-- 64px -->
+    <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
+      <div class="sg-icon-wrap">
+        <svg width="64" height="64" viewBox="0 0 80 80" role="img"><title>64px</title>
+          <defs>
+            <linearGradient id="lg5" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#6366f1"/><stop offset="50%" stop-color="#a855f7"/><stop offset="100%" stop-color="#ec4899"/>
+            </linearGradient>
+            <linearGradient id="lg6" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#818cf8"/><stop offset="100%" stop-color="#c084fc"/>
+            </linearGradient>
+          </defs>
+          <g class="lamp-body">
+            <ellipse cx="40" cy="68" rx="28" ry="7" fill="#6366f1" opacity="0.2"/>
+            <path d="M18 61 Q16 46 25 37 Q32 29 40 32 Q48 29 55 37 Q64 46 62 61 Q55 66 40 68 Q25 66 18 61Z" fill="url(#lg5)"/>
+            <path d="M60 54 Q73 50 75 56 Q73 62 60 60Z" fill="url(#lg5)"/>
+            <path d="M18 54 Q10 54 10 60 Q10 65 18 63" fill="none" stroke="url(#lg5)" stroke-width="3.5" stroke-linecap="round"/>
+          </g>
+          <g class="smoke-main"><path d="M40 32 Q37 22 41 14 Q44 7 39 2" fill="none" stroke="url(#lg6)" stroke-width="3" stroke-linecap="round"/></g>
+          <g class="smoke-left"><path d="M40 32 Q33 20 36 11 Q38 5 34 0" fill="none" stroke="url(#lg6)" stroke-width="2" stroke-linecap="round"/></g>
+          <g class="smoke-right"><path d="M40 32 Q47 20 44 11 Q42 5 46 0" fill="none" stroke="url(#lg6)" stroke-width="2" stroke-linecap="round"/></g>
+          <circle class="sp1" cx="28" cy="14" r="3" fill="url(#lg5)"/>
+          <circle class="sp2" cx="52" cy="9" r="2.5" fill="#a855f7"/>
+          <circle class="sp3" cx="39" cy="0" r="3.5" fill="url(#lg5)"/>
+          <circle class="sp4" cx="22" cy="5" r="2" fill="#ec4899"/>
+          <circle class="sp5" cx="56" cy="2" r="2" fill="#6366f1"/>
+        </svg>
+      </div>
+      <span class="size-label">64px</span>
+    </div>
+
+    <!-- 40px -->
+    <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
+      <div class="sg-icon-wrap">
+        <svg width="40" height="40" viewBox="0 0 80 80" role="img"><title>40px</title>
+          <defs>
+            <linearGradient id="lg7" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#6366f1"/><stop offset="50%" stop-color="#a855f7"/><stop offset="100%" stop-color="#ec4899"/>
+            </linearGradient>
+            <linearGradient id="lg8" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#818cf8"/><stop offset="100%" stop-color="#c084fc"/>
+            </linearGradient>
+          </defs>
+          <g class="lamp-body">
+            <ellipse cx="40" cy="68" rx="28" ry="7" fill="#6366f1" opacity="0.2"/>
+            <path d="M18 61 Q16 46 25 37 Q32 29 40 32 Q48 29 55 37 Q64 46 62 61 Q55 66 40 68 Q25 66 18 61Z" fill="url(#lg7)"/>
+            <path d="M60 54 Q73 50 75 56 Q73 62 60 60Z" fill="url(#lg7)"/>
+            <path d="M18 54 Q10 54 10 60 Q10 65 18 63" fill="none" stroke="url(#lg7)" stroke-width="3.5" stroke-linecap="round"/>
+          </g>
+          <g class="smoke-main"><path d="M40 32 Q37 22 41 14 Q44 7 39 2" fill="none" stroke="url(#lg8)" stroke-width="3" stroke-linecap="round"/></g>
+          <g class="smoke-left"><path d="M40 32 Q33 20 36 11 Q38 5 34 0" fill="none" stroke="url(#lg8)" stroke-width="2" stroke-linecap="round"/></g>
+          <g class="smoke-right"><path d="M40 32 Q47 20 44 11 Q42 5 46 0" fill="none" stroke="url(#lg8)" stroke-width="2" stroke-linecap="round"/></g>
+          <circle class="sp1" cx="28" cy="14" r="3" fill="url(#lg7)"/>
+          <circle class="sp2" cx="52" cy="9" r="2.5" fill="#a855f7"/>
+          <circle class="sp3" cx="39" cy="0" r="3.5" fill="url(#lg7)"/>
+          <circle class="sp4" cx="22" cy="5" r="2" fill="#ec4899"/>
+          <circle class="sp5" cx="56" cy="2" r="2" fill="#6366f1"/>
+        </svg>
+      </div>
+      <span class="size-label">40px</span>
+    </div>
+
+    <!-- 24px -->
+    <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
+      <div class="sg-icon-wrap">
+        <svg width="24" height="24" viewBox="0 0 80 80" role="img"><title>24px</title>
+          <defs>
+            <linearGradient id="lg9" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#6366f1"/><stop offset="50%" stop-color="#a855f7"/><stop offset="100%" stop-color="#ec4899"/>
+            </linearGradient>
+            <linearGradient id="lg10" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#818cf8"/><stop offset="100%" stop-color="#c084fc"/>
+            </linearGradient>
+          </defs>
+          <g class="lamp-body">
+            <ellipse cx="40" cy="68" rx="28" ry="7" fill="#6366f1" opacity="0.2"/>
+            <path d="M18 61 Q16 46 25 37 Q32 29 40 32 Q48 29 55 37 Q64 46 62 61 Q55 66 40 68 Q25 66 18 61Z" fill="url(#lg9)"/>
+            <path d="M60 54 Q73 50 75 56 Q73 62 60 60Z" fill="url(#lg9)"/>
+            <path d="M18 54 Q10 54 10 60 Q10 65 18 63" fill="none" stroke="url(#lg9)" stroke-width="3.5" stroke-linecap="round"/>
+          </g>
+          <g class="smoke-main"><path d="M40 32 Q37 22 41 14 Q44 7 39 2" fill="none" stroke="url(#lg10)" stroke-width="3" stroke-linecap="round"/></g>
+          <circle class="sp3" cx="39" cy="0" r="3.5" fill="url(#lg9)"/>
+        </svg>
+      </div>
+      <span class="size-label">24px</span>
+    </div>
+
+  </div>
+</div>
+
+<!-- HORIZONTAL COMPACT -->
+<div class="sg-card" style="width:320px; flex-direction:row; gap:16px; padding:20px 28px;">
+  <div class="sg-icon-wrap">
+    <svg width="44" height="44" viewBox="0 0 80 80" role="img"><title>Horizontal icon</title>
+      <defs>
+        <linearGradient id="lg11" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#6366f1"/><stop offset="50%" stop-color="#a855f7"/><stop offset="100%" stop-color="#ec4899"/>
+        </linearGradient>
+        <linearGradient id="lg12" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#818cf8"/><stop offset="100%" stop-color="#c084fc"/>
+        </linearGradient>
+      </defs>
+      <g class="lamp-body">
+        <ellipse cx="40" cy="68" rx="28" ry="7" fill="#6366f1" opacity="0.2"/>
+        <path d="M18 61 Q16 46 25 37 Q32 29 40 32 Q48 29 55 37 Q64 46 62 61 Q55 66 40 68 Q25 66 18 61Z" fill="url(#lg11)"/>
+        <path d="M60 54 Q73 50 75 56 Q73 62 60 60Z" fill="url(#lg11)"/>
+        <path d="M18 54 Q10 54 10 60 Q10 65 18 63" fill="none" stroke="url(#lg11)" stroke-width="3.5" stroke-linecap="round"/>
+      </g>
+      <g class="smoke-main"><path d="M40 32 Q37 22 41 14 Q44 7 39 2" fill="none" stroke="url(#lg12)" stroke-width="3" stroke-linecap="round"/></g>
+      <g class="smoke-left"><path d="M40 32 Q33 20 36 11 Q38 5 34 0" fill="none" stroke="url(#lg12)" stroke-width="2" stroke-linecap="round"/></g>
+      <g class="smoke-right"><path d="M40 32 Q47 20 44 11 Q42 5 46 0" fill="none" stroke="url(#lg12)" stroke-width="2" stroke-linecap="round"/></g>
+      <circle class="sp1" cx="28" cy="14" r="3" fill="url(#lg11)"/>
+      <circle class="sp2" cx="52" cy="9" r="2.5" fill="#a855f7"/>
+      <circle class="sp3" cx="39" cy="0" r="3.5" fill="url(#lg11)"/>
+      <circle class="sp4" cx="22" cy="5" r="2" fill="#ec4899"/>
+      <circle class="sp5" cx="56" cy="2" r="2" fill="#6366f1"/>
+    </svg>
+  </div>
+  <div class="sg-horiz-text">
+    <div class="sg-name-sm">SiteGenie</div>
+    <div class="sg-tagline">Train once, answer forever</div>
+  </div>
+</div>
+
+</div>

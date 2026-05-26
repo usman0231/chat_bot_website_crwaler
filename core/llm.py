@@ -22,13 +22,35 @@ _client = OpenAI(
 )
 
 
-def chat(system: str, user: str, *, temperature: float = 0.2) -> str:
+def _build_messages(
+    system: str,
+    user: str,
+    history: list[dict] | None,
+) -> list[dict]:
+    """Compose [system, ...history, user]. History items must already be in
+    OpenAI format ({"role": "user"|"assistant", "content": str})."""
+    msgs: list[dict] = [{"role": "system", "content": system}]
+    if history:
+        msgs.extend(history)
+    msgs.append({"role": "user", "content": user})
+    return msgs
+
+
+def chat(
+    system: str,
+    user: str,
+    *,
+    history: list[dict] | None = None,
+    temperature: float = 0.2,
+) -> str:
     """
-    Single-turn chat call.
+    Single-turn chat call (with optional prior turns).
 
     Args:
         system: The strict system prompt (guardrails go here).
         user:   The user message (usually: context + question for RAG).
+        history: Prior conversation turns in OpenAI format. Caller is
+                 responsible for any role conversion and trimming.
         temperature: Lower = more deterministic. 0.2 is a good default for
                      RAG so the model sticks closer to the retrieved context.
 
@@ -41,12 +63,31 @@ def chat(system: str, user: str, *, temperature: float = 0.2) -> str:
     resp = _client.chat.completions.create(
         model=settings.llm_model,
         temperature=temperature,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
+        messages=_build_messages(system, user, history),
     )
     return resp.choices[0].message.content or ""
+
+
+def chat_stream(
+    system: str,
+    user: str,
+    *,
+    history: list[dict] | None = None,
+    temperature: float = 0.2,
+):
+    """Yield content tokens as they arrive from the model."""
+    stream = _client.chat.completions.create(
+        model=settings.llm_model,
+        temperature=temperature,
+        messages=_build_messages(system, user, history),
+        stream=True,
+    )
+    for chunk in stream:
+        if not chunk.choices:
+            continue
+        delta = chunk.choices[0].delta.content
+        if delta:
+            yield delta
 
 
 def ping() -> bool:
