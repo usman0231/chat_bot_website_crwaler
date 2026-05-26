@@ -53,7 +53,11 @@
       "Bash(python -c \"import chromadb; c=chromadb.PersistentClient\\(path='data/chroma'\\); print\\('get_max_batch_size ->', c.get_max_batch_size\\(\\)\\)\")",
       "Bash(python -m pytest tests/test_pipeline.py -q)",
       "Bash(npx next *)",
-      "Bash(npx eslint *)"
+      "Bash(npx eslint *)",
+      "Bash(git -C F:/projects/efest/site-bot log --oneline -5)",
+      "Bash(git -C F:/projects/efest/site-bot ls-files frontend/)",
+      "Bash(git -C F:/projects/efest/site-bot ls-files frontend/app/page.tsx frontend/app/layout.tsx frontend/package.json frontend/next.config.ts)",
+      "Bash(git *)"
     ]
   }
 }
