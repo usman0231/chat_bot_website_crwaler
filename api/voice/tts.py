@@ -321,6 +321,18 @@ def _is_paid_plan_required(err: BaseException) -> bool:
     return "paid_plan_required" in msg or "free users cannot use library voices" in msg
 
 
+def _is_quota_exhausted(err: BaseException) -> bool:
+    """True if the ElevenLabs account is out of credits (not voice-specific).
+
+    Surfaces as a 401 with body ``{"code": "quota_exceeded", ...}`` — distinct
+    from the 402 ``paid_plan_required`` thrown when a *specific* voice needs
+    a higher plan. Quota exhaustion affects every voice, so the caller should
+    latch process-wide rather than per-voice.
+    """
+    msg = str(err).lower()
+    return "quota_exceeded" in msg or "credits remaining" in msg
+
+
 def _block_voice(voice_id: str | None, err: BaseException) -> None:
     """Remember a single paywalled voice without killing the others.
 
@@ -411,6 +423,11 @@ async def synthesize_streaming(
     try:
         stream = await asyncio.to_thread(_open)
     except Exception as e:
+        if _is_quota_exhausted(e):
+            _latch_block(e)
+            async for chunk in _edge_stream(text, language, effective):
+                yield chunk
+            return
         if _is_paid_plan_required(e):
             _block_voice(effective, e)
             async for chunk in _edge_stream(text, language, effective):
@@ -433,6 +450,11 @@ async def synthesize_streaming(
         try:
             chunk = await asyncio.to_thread(_next, stream)
         except Exception as e:
+            if _is_quota_exhausted(e):
+                _latch_block(e)
+                async for fb_chunk in _edge_stream(text, language, effective):
+                    yield fb_chunk
+                return
             if _is_paid_plan_required(e):
                 _block_voice(effective, e)
                 async for fb_chunk in _edge_stream(text, language, effective):
@@ -509,6 +531,9 @@ def preview_bytes(voice_id: str, text: str) -> bytes:
         )
         return b"".join(c for c in stream if c)
     except Exception as e:
+        if _is_quota_exhausted(e):
+            _latch_block(e)
+            return _edge_oneshot()
         if _is_paid_plan_required(e):
             _block_voice(voice_id, e)
             return _edge_oneshot()

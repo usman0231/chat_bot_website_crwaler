@@ -57,7 +57,10 @@
       "Bash(git -C F:/projects/efest/site-bot log --oneline -5)",
       "Bash(git -C F:/projects/efest/site-bot ls-files frontend/)",
       "Bash(git -C F:/projects/efest/site-bot ls-files frontend/app/page.tsx frontend/app/layout.tsx frontend/package.json frontend/next.config.ts)",
-      "Bash(git *)"
+      "Bash(git *)",
+      "WebFetch(domain:chat-bot-website-crwaler.vercel.app)",
+      "Bash(.venv/Scripts/python.exe -m pip install \"groq>=0.9.0\" \"soundfile>=0.12.1\")",
+      "Bash(.venv/Scripts/python.exe *)"
     ]
   }
 }

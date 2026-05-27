@@ -262,8 +262,13 @@ async def call_endpoint(
                     session.state = CallState.PROCESSING
                     await websocket.send_json({"type": "processing"})
 
+                    initial_prompt = (
+                        f"Customer calling {website_name} support."
+                    )
                     try:
-                        stt_result = await asyncio.to_thread(transcribe, utterance)
+                        stt_result = await asyncio.to_thread(
+                            transcribe, utterance, initial_prompt=initial_prompt
+                        )
                     except Exception as e:
                         log.exception("STT failed")
                         await websocket.send_json(

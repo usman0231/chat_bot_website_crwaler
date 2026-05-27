@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     llm_api_key: str = Field(default="ollama")  # Ollama ignores this; just non-empty
     llm_model: str = Field(default="qwen2.5:7b")
 
+    # ----- Groq (cloud Whisper STT) -----
+    # In practice this is the same key as LLM_API_KEY when Groq is the
+    # backend; the stt module reads LLM_API_KEY directly. Exposed here so
+    # GROQ_API_KEY can be set explicitly when the two diverge.
+    groq_api_key: str = Field(default="")
+
     # ----- API auth -----
     demo_api_key: str = Field(..., description="Legacy/admin API key — still recognised as a fallback")
     jwt_secret: str = Field(
