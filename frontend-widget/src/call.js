@@ -15,7 +15,6 @@
   var titleEl = document.getElementById("title");
   var closeBtn = document.getElementById("close");
   var statusEl = document.getElementById("status");
-  var botLineEl = document.getElementById("bot-line");
   var transcriptEl = document.getElementById("transcript");
   var timerEl = document.getElementById("timer");
   var muteBtn = document.getElementById("mute");
@@ -260,7 +259,6 @@
           break;
         case "listening":
           setState("listening");
-          botLineEl.textContent = "";
           break;
         case "speech_detected":
           if (callState === "speaking") {
@@ -277,7 +275,6 @@
         case "bot_start":
           pendingChunks = [];
           setState("speaking");
-          botLineEl.textContent = msg.text ? "“" + msg.text + "”" : "";
           if (msg.text) appendTranscript("bot", msg.text, "en");
           break;
         case "audio_chunk":

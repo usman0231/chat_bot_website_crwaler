@@ -56,7 +56,11 @@ def transcribe(audio_bytes: bytes, initial_prompt: str | None = None) -> dict:
     try:
         params: dict = {
             "file": wav_buffer,
-            "model": "whisper-large-v3",
+            # Turbo variant: ~3x faster than whisper-large-v3 on Groq with a
+            # small accuracy hit — acceptable for short, conversational
+            # customer-service utterances, and the speedup is what makes the
+            # user transcript feel "instant" instead of "after a beat".
+            "model": "whisper-large-v3-turbo",
             "response_format": "verbose_json",
         }
         if initial_prompt:

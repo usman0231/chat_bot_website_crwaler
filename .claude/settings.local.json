@@ -60,7 +60,8 @@
       "Bash(git *)",
       "WebFetch(domain:chat-bot-website-crwaler.vercel.app)",
       "Bash(.venv/Scripts/python.exe -m pip install \"groq>=0.9.0\" \"soundfile>=0.12.1\")",
-      "Bash(.venv/Scripts/python.exe *)"
+      "Bash(.venv/Scripts/python.exe *)",
+      "Bash(./.venv/Scripts/python.exe *)"
     ]
   }
 }

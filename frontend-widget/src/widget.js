@@ -4,10 +4,11 @@
  * Loaded on a customer's site as:
  *   <script src=".../widget.js" data-bot-id="..." data-api-key="..." async></script>
  *
- * Injects two floating launcher buttons (chat and call), and on click slides
- * in an iframe pointing at /widget/chat.html or /widget/call.html. The
- * iframes carry the actual UIs; this file only handles mounting + open/close
- * so we don't pollute the host page.
+ * Injects a single floating chat launcher and on click slides in an iframe
+ * pointing at /widget/chat.html. The chat panel has its own call icon in
+ * the header (Messenger-style); clicking it postMessages here and we swap
+ * to the call iframe (/widget/call.html). This file only handles mounting
+ * + open/close so we don't pollute the host page.
  */
 (function () {
   if (window.__sitebotWidgetLoaded) return;
@@ -42,8 +43,6 @@
   var Z = 2147483646;
   var CHAT_GRADIENT =
     "linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #ec4899 100%)";
-  var CALL_GRADIENT =
-    "linear-gradient(135deg, #10b981 0%, #059669 60%, #047857 100%)";
 
   function makeButton(opts) {
     var btn = document.createElement("button");
@@ -105,18 +104,6 @@
     size: 60,
     gradient: CHAT_GRADIENT,
     svg: LAMP_SVG,
-  });
-
-  var callBtn = makeButton({
-    label: "Start voice call",
-    dataset: "launcher-call",
-    bottom: 92,
-    size: 50,
-    gradient: CALL_GRADIENT,
-    svg:
-      '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-      '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/>' +
-      "</svg>",
   });
 
   var chatIframe = null;
@@ -258,7 +245,6 @@
       bg: "#09090b",
       scheme: "dark",
     });
-    callBtn.setAttribute("aria-label", "End call");
   }
 
   function closeCall() {
@@ -269,20 +255,22 @@
       bg: "#09090b",
       scheme: "dark",
     });
-    callBtn.setAttribute("aria-label", "Start voice call");
   }
 
   chatBtn.addEventListener("click", function () {
+    if (callOpen) closeCall();
     chatOpen ? closeChat() : openChat();
-  });
-  callBtn.addEventListener("click", function () {
-    callOpen ? closeCall() : openCall();
   });
 
   window.addEventListener("message", function (e) {
     if (!e.data) return;
     if (chatIframe && e.source === chatIframe.contentWindow) {
       if (e.data.type === "sitebot:close") closeChat();
+      // Chat-header call icon → swap to the call panel.
+      if (e.data.type === "sitebot:open-call") {
+        closeChat();
+        openCall();
+      }
     }
     if (callIframe && e.source === callIframe.contentWindow) {
       if (e.data.type === "sitebot:close") closeCall();
@@ -307,7 +295,6 @@
 
   function mount() {
     document.body.appendChild(chatBtn);
-    document.body.appendChild(callBtn);
   }
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", mount, { once: true });

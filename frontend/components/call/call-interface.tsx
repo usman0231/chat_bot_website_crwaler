@@ -155,7 +155,6 @@ function float32ToBase64(buf: Float32Array): string {
 export function CallInterface({ botId, botName, onEnd }: CallInterfaceProps) {
   const [callState, setCallState] = React.useState<CallState>("connecting");
   const [transcript, setTranscript] = React.useState<TranscriptItem[]>([]);
-  const [currentBotText, setCurrentBotText] = React.useState<string>("");
   const [callDuration, setCallDuration] = React.useState(0);
   const [muted, setMuted] = React.useState(false);
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
@@ -459,7 +458,6 @@ export function CallInterface({ botId, botName, onEnd }: CallInterfaceProps) {
             const text = (msg.text as string) || "";
             pendingMp3Ref.current = [];
             setCallState("speaking");
-            setCurrentBotText(text);
             if (text) appendTranscript("bot", text, "en");
             break;
           }
@@ -495,7 +493,6 @@ export function CallInterface({ botId, botName, onEnd }: CallInterfaceProps) {
             // the streamed MP3 takes a beat to start. Fire-and-forget.
             callSounds.playBeep().catch(() => {});
             setCallState("listening");
-            setCurrentBotText("");
             break;
           }
           case "error": {
@@ -664,12 +661,6 @@ export function CallInterface({ botId, botName, onEnd }: CallInterfaceProps) {
         </div>
 
         <Waveform active={callState === "speaking"} />
-
-        {currentBotText && callState === "speaking" && (
-          <p className="max-w-full px-2 text-center text-sm italic text-white/80">
-            “{currentBotText}”
-          </p>
-        )}
 
         <div
           ref={transcriptScrollRef}

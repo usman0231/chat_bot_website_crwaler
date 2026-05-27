@@ -15,6 +15,7 @@
 
   var titleEl = document.getElementById("title");
   var closeBtn = document.getElementById("close");
+  var callBtn = document.getElementById("call");
   var messagesEl = document.getElementById("messages");
   var composer = document.getElementById("composer");
   var inputEl = document.getElementById("input");
@@ -167,6 +168,16 @@
       /* ignore */
     }
   });
+
+  if (callBtn) {
+    callBtn.addEventListener("click", function () {
+      try {
+        parent.postMessage({ type: "sitebot:open-call" }, "*");
+      } catch (e) {
+        /* ignore */
+      }
+    });
+  }
 
   function send(text) {
     var trimmed = (text || "").trim();
