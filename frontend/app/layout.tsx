@@ -32,6 +32,14 @@ export const metadata: Metadata = {
   icons: {
     icon: "/favicon.ico",
   },
+  // Emits <meta name="mobile-web-app-capable" content="yes"> and the
+  // apple-mobile-web-app-status-bar-style tag — improves mobile/iOS web-app
+  // behavior so mic permission grants persist better across reloads.
+  appleWebApp: {
+    capable: true,
+    title: BRAND.name,
+    statusBarStyle: "black-translucent",
+  },
 };
 
 export default function RootLayout({

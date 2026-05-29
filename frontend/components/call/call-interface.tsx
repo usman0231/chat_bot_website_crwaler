@@ -158,6 +158,10 @@ export function CallInterface({ botId, botName, onEnd }: CallInterfaceProps) {
   const [callDuration, setCallDuration] = React.useState(0);
   const [muted, setMuted] = React.useState(false);
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
+  // iOS Safari blocks audio.play() that isn't triggered by a user gesture.
+  // When the bot's reply arrives async over the WS we can't satisfy that, so
+  // we surface a "tap to hear" button and replay on the resulting tap.
+  const [needsUserGesture, setNeedsUserGesture] = React.useState(false);
 
   const wsRef = React.useRef<WebSocket | null>(null);
   const mediaStreamRef = React.useRef<MediaStream | null>(null);
@@ -253,6 +257,7 @@ export function CallInterface({ botId, botName, onEnd }: CallInterfaceProps) {
   }, []);
 
   const stopPlayback = React.useCallback(() => {
+    setNeedsUserGesture(false);
     if (playbackAudioRef.current) {
       try {
         playbackAudioRef.current.pause();
@@ -280,6 +285,9 @@ export function CallInterface({ botId, botName, onEnd }: CallInterfaceProps) {
     const url = URL.createObjectURL(blob);
     playbackUrlRef.current = url;
     const audio = new Audio(url);
+    // iOS Safari only plays inline (otherwise it may hijack into a fullscreen
+    // native player); setting the attribute keeps playback in-page.
+    audio.setAttribute("playsinline", "true");
     playbackAudioRef.current = audio;
     audio.onended = () => {
       if (playbackUrlRef.current === url) {
@@ -293,9 +301,15 @@ export function CallInterface({ botId, botName, onEnd }: CallInterfaceProps) {
         playbackUrlRef.current = null;
       }
     };
-    audio.play().catch((err) => {
-      console.warn("Audio playback failed", err);
-    });
+    audio
+      .play()
+      .then(() => setNeedsUserGesture(false))
+      .catch((err) => {
+        // Autoplay blocked (iOS requires a fresh user gesture). Keep the
+        // audio element around and let the user tap to hear it.
+        console.warn("Audio playback failed", err);
+        setNeedsUserGesture(true);
+      });
   }, [stopPlayback]);
 
   const sendInterrupt = React.useCallback(() => {
@@ -661,6 +675,21 @@ export function CallInterface({ botId, botName, onEnd }: CallInterfaceProps) {
         </div>
 
         <Waveform active={callState === "speaking"} />
+
+        {needsUserGesture && (
+          <button
+            type="button"
+            onClick={() => {
+              playbackAudioRef.current
+                ?.play()
+                .then(() => setNeedsUserGesture(false))
+                .catch((err) => console.warn("Audio playback failed", err));
+            }}
+            className="flex items-center gap-2 rounded-full border border-emerald-400/40 bg-emerald-500/20 px-4 py-2 text-sm font-medium text-emerald-100 transition-colors hover:bg-emerald-500/30"
+          >
+            🔊 Tap to hear response
+          </button>
+        )}
 
         <div
           ref={transcriptScrollRef}
