@@ -33,6 +33,23 @@
   var history = [];
   var streaming = false;
 
+  // Stable anonymous visitor id so a visitor's messages thread into a single
+  // conversation the bot owner can review. Persisted per browser; falls back
+  // to an in-memory id if storage is unavailable (private mode / sandboxing).
+  var visitorId = (function () {
+    try {
+      var k = "sitebot-visitor-id";
+      var id = localStorage.getItem(k);
+      if (!id) {
+        id = "vis_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+        localStorage.setItem(k, id);
+      }
+      return id;
+    } catch (e) {
+      return "vis_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+    }
+  })();
+
   function authHeaders(extra) {
     var h = extra || {};
     if (apiKey) h["X-API-Key"] = apiKey;
@@ -210,11 +227,18 @@
       entry.msg.className = "msg error";
     }
 
-    fetch(base + "/bot/" + encodeURIComponent(botId) + "/chat/stream", {
-      method: "POST",
-      headers: authHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ message: trimmed, history: historyToSend }),
-    })
+    fetch(
+      base +
+        "/bot/" +
+        encodeURIComponent(botId) +
+        "/chat/stream?visitor_id=" +
+        encodeURIComponent(visitorId),
+      {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ message: trimmed, history: historyToSend }),
+      },
+    )
       .then(function (res) {
         if (!res.ok) throw new Error("http " + res.status);
         var reader = res.body.getReader();

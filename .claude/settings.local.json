@@ -61,7 +61,15 @@
       "WebFetch(domain:chat-bot-website-crwaler.vercel.app)",
       "Bash(.venv/Scripts/python.exe -m pip install \"groq>=0.9.0\" \"soundfile>=0.12.1\")",
       "Bash(.venv/Scripts/python.exe *)",
-      "Bash(./.venv/Scripts/python.exe *)"
+      "Bash(./.venv/Scripts/python.exe *)",
+      "Bash(python *)",
+      "Bash(node -e \"console.log\\(require\\('next/package.json'\\).version\\)\")",
+      "Bash(ls node_modules/next/dist/docs/)",
+      "Bash(echo \"=== EXIT $? ===\")",
+      "Bash(grep -iE \"^typescript$|^eslint$|^\\\\.bin$\")",
+      "Bash(pip show *)",
+      "Bash(pip install *)",
+      "Bash(echo \"=== exit $? ===\")"
     ]
   }
 }

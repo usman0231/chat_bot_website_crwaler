@@ -48,6 +48,44 @@ export interface ChatResponse {
   sources: string[];
   in_scope: boolean;
   match_quality: MatchQuality;
+  visitor_id?: string | null;
+  conversation_id?: string | null;
+}
+
+export type ConversationChannel = "chat" | "voice";
+
+export interface ConversationSummary {
+  id: string;
+  channel: ConversationChannel;
+  visitor_id: string | null;
+  started_at: string;
+  last_at: string;
+  message_count: number;
+  summary: string | null;
+}
+
+export interface ConversationListResponse {
+  bot_id: string;
+  conversations: ConversationSummary[];
+}
+
+export interface ConversationMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+}
+
+export interface ConversationDetail {
+  id: string;
+  bot_id: string;
+  channel: ConversationChannel;
+  visitor_id: string | null;
+  started_at: string;
+  last_at: string;
+  message_count: number;
+  summary: string | null;
+  messages: ConversationMessage[];
 }
 
 export interface ChatHistoryMessage {
@@ -196,10 +234,11 @@ export function chatBot(
   botId: string,
   message: string,
   history: ChatHistoryMessage[] = [],
+  visitorId?: string | null,
 ): Promise<ChatResponse> {
   return request<ChatResponse>(`/bot/${botId}/chat`, {
     method: "POST",
-    body: JSON.stringify({ message, history }),
+    body: JSON.stringify({ message, history, visitor_id: visitorId ?? null }),
   });
 }
 
@@ -208,6 +247,7 @@ export async function chatBotStream(
   message: string,
   history: ChatHistoryMessage[] = [],
   signal?: AbortSignal,
+  visitorId?: string | null,
 ): Promise<Response> {
   const headers = buildAuthHeaders();
 
@@ -216,7 +256,7 @@ export async function chatBotStream(
     res = await fetch(`${API_BASE_URL}/bot/${botId}/chat/stream`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ message, history }),
+      body: JSON.stringify({ message, history, visitor_id: visitorId ?? null }),
       signal,
     });
   } catch (err) {
@@ -351,6 +391,30 @@ export function callWebSocketUrl(botId: string): string {
   return `${wsBase}/ws/call/${encodeURIComponent(botId)}${qs ? `?${qs}` : ""}`;
 }
 
+export async function listConversations(
+  botId: string,
+  limit = 50,
+  offset = 0,
+): Promise<ConversationSummary[]> {
+  const params = new URLSearchParams({
+    limit: String(limit),
+    offset: String(offset),
+  });
+  const res = await request<ConversationListResponse>(
+    `/bot/${botId}/conversations?${params.toString()}`,
+  );
+  return res.conversations ?? [];
+}
+
+export function getConversation(
+  botId: string,
+  conversationId: string,
+): Promise<ConversationDetail> {
+  return request<ConversationDetail>(
+    `/bot/${botId}/conversations/${conversationId}`,
+  );
+}
+
 export function getMyApiKey(): Promise<ApiKeyResponse> {
   return request<ApiKeyResponse>("/auth/api-key");
 }
@@ -411,6 +475,8 @@ export const api = {
   deleteBot,
   getBotSources,
   recrawlBot,
+  listConversations,
+  getConversation,
   updateBotQuestions,
   regenerateBotQuestions,
   updateBotVoice,

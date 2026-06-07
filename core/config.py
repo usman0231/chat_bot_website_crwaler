@@ -66,6 +66,10 @@ class Settings(BaseSettings):
     crawl_concurrency: int = Field(default=5, ge=1, le=50)
     http_timeout: float = Field(default=10.0, gt=0)
     browser_timeout: int = Field(default=15, ge=5, le=60)
+    # Hard ceiling on a single crawl. A stuck page (infinite scroll, hung
+    # network) must never hold a Chromium process open forever — on the 1GB
+    # prod box orphaned browsers accumulate and OOM the backend.
+    crawl_hard_timeout: int = Field(default=120, ge=10, le=1800)
 
     # ----- RAG -----
     top_k: int = Field(default=4, ge=1, le=20)

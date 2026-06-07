@@ -60,6 +60,9 @@ class ChatHistoryMessage(BaseModel):
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=2000)
     history: list[ChatHistoryMessage] = Field(default_factory=list)
+    # Anonymous visitor id (cookie/localStorage). Lets us thread successive
+    # requests into one stored conversation. Generated server-side if absent.
+    visitor_id: str | None = Field(None, max_length=64)
 
 
 class ChatResponse(BaseModel):
@@ -67,6 +70,9 @@ class ChatResponse(BaseModel):
     sources: list[str]
     in_scope: bool
     match_quality: Literal["strong", "weak", "none", "greeting", "farewell", "meta"]
+    # Echoed back so the frontend can persist and reuse it on the next turn.
+    visitor_id: str | None = None
+    conversation_id: str | None = None
 
 
 class SourcePage(BaseModel):
@@ -117,3 +123,37 @@ class UpdateVoiceRequest(BaseModel):
 class UpdateVoiceResponse(BaseModel):
     bot_id: str
     voice_id: str
+
+
+class ConversationSummary(BaseModel):
+    id: str
+    channel: Literal["chat", "voice"]
+    visitor_id: str | None = None
+    started_at: str
+    last_at: str
+    message_count: int
+    summary: str | None = None
+
+
+class ConversationListResponse(BaseModel):
+    bot_id: str
+    conversations: list[ConversationSummary]
+
+
+class ConversationMessage(BaseModel):
+    id: str
+    role: Literal["user", "assistant"]
+    content: str
+    created_at: str
+
+
+class ConversationDetailResponse(BaseModel):
+    id: str
+    bot_id: str
+    channel: Literal["chat", "voice"]
+    visitor_id: str | None = None
+    started_at: str
+    last_at: str
+    message_count: int
+    summary: str | None = None
+    messages: list[ConversationMessage]

@@ -20,18 +20,22 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from api import auth_db, registry
+from api import auth_db, conversations_db, registry
 from api.auth import require_auth_either
 from api.auth_endpoints import router as auth_router
 from api.schemas import (
     BotSummary,
     ChatRequest,
     ChatResponse,
+    ConversationDetailResponse,
+    ConversationListResponse,
+    ConversationMessage,
+    ConversationSummary,
     CreateBotRequest,
     CreateBotResponse,
     DeleteBotResponse,
@@ -147,6 +151,39 @@ def _ensure_visible(entry: dict, requester: auth_db.User | None, bot_id: str) ->
         return
     if owner != requester.id:
         raise HTTPException(403, f"Bot '{bot_id}' is not accessible")
+
+
+def _new_visitor_id() -> str:
+    return "vis_" + uuid.uuid4().hex[:16]
+
+
+def _persist_chat_turn(
+    bot_id: str, visitor_id: str | None, user_text: str, assistant_text: str
+) -> None:
+    """Synchronously store one chat turn. Runs off the event loop (in a
+    threadpool) so the user-facing reply is never blocked by SQLite I/O.
+    All failures are swallowed — persistence must never break a chat."""
+    try:
+        conv_id = conversations_db.create_or_get_conversation(
+            bot_id, "chat", visitor_id
+        )
+        conversations_db.add_message(conv_id, "user", user_text)
+        conversations_db.add_message(conv_id, "assistant", assistant_text)
+    except Exception:
+        log.warning("Failed to persist chat turn for bot %s", bot_id, exc_info=True)
+
+
+def _save_chat_turn_bg(
+    bot_id: str, visitor_id: str | None, user_text: str, assistant_text: str
+) -> None:
+    """Fire-and-forget the chat-turn save onto a worker thread."""
+    if not (user_text and assistant_text):
+        return
+    asyncio.create_task(
+        asyncio.to_thread(
+            _persist_chat_turn, bot_id, visitor_id, user_text, assistant_text
+        )
+    )
 
 
 @app.get("/", tags=["meta"])
@@ -368,6 +405,7 @@ async def bot_chat(
     bot_id: str,
     req: ChatRequest,
     requester: auth_db.User | None = Depends(require_auth_either),
+    visitor_id: str | None = Query(default=None),
 ):
     reg = registry.load_registry()
     entry = reg.get(bot_id)
@@ -388,12 +426,17 @@ async def bot_chat(
         bot = WebsiteBot(bot_id, entry.get("website_name", ""))
         _bot_cache[bot_id] = bot
 
+    # Body wins over query string; fall back to a freshly minted id.
+    vid = req.visitor_id or visitor_id or _new_visitor_id()
+
     result = bot.answer(req.message, history=_openai_history(req.history))
+    _save_chat_turn_bg(bot_id, vid, req.message, result["answer"])
     return ChatResponse(
         answer=result["answer"],
         sources=result["sources"],
         in_scope=result["in_scope"],
         match_quality=result["match_quality"],
+        visitor_id=vid,
     )
 
 
@@ -405,6 +448,7 @@ async def bot_chat_stream(
     bot_id: str,
     req: ChatRequest,
     requester: auth_db.User | None = Depends(require_auth_either),
+    visitor_id: str | None = Query(default=None),
 ):
     reg = registry.load_registry()
     entry = reg.get(bot_id)
@@ -426,14 +470,17 @@ async def bot_chat_stream(
         _bot_cache[bot_id] = bot
 
     openai_history = _openai_history(req.history)
+    vid = req.visitor_id or visitor_id or _new_visitor_id()
 
     def event_stream():
         def sse(payload: dict) -> str:
             return f"data: {json.dumps(payload)}\n\n"
 
+        assistant_parts: list[str] = []
         try:
             canned = bot.quick_reply(req.message)
             if canned is not None:
+                assistant_parts.append(canned["answer"])
                 yield sse({"type": "token", "content": canned["answer"]})
                 yield sse(
                     {
@@ -441,6 +488,7 @@ async def bot_chat_stream(
                         "sources": [],
                         "in_scope": True,
                         "match_quality": canned["match_quality"],
+                        "visitor_id": vid,
                     }
                 )
                 yield sse({"type": "done"})
@@ -448,6 +496,7 @@ async def bot_chat_stream(
 
             ctx = bot.retrieve(req.message)
             if not ctx["in_scope"]:
+                assistant_parts.append(ctx["answer"])
                 yield sse({"type": "token", "content": ctx["answer"]})
                 yield sse(
                     {
@@ -455,6 +504,7 @@ async def bot_chat_stream(
                         "sources": [],
                         "in_scope": False,
                         "match_quality": "none",
+                        "visitor_id": vid,
                     }
                 )
                 yield sse({"type": "done"})
@@ -466,6 +516,7 @@ async def bot_chat_stream(
                 history=openai_history,
                 temperature=0.1,
             ):
+                assistant_parts.append(token)
                 yield sse({"type": "token", "content": token})
 
             yield sse(
@@ -474,11 +525,19 @@ async def bot_chat_stream(
                     "sources": ctx["sources"],
                     "in_scope": True,
                     "match_quality": ctx["match_quality"],
+                    "visitor_id": vid,
                 }
             )
             yield sse({"type": "done"})
         except Exception as e:
             yield sse({"type": "error", "message": str(e)})
+        finally:
+            # Persist after the response has been streamed to the client, so
+            # saving adds no latency to the visible reply. Runs in the stream's
+            # own worker thread; best-effort.
+            assistant_text = "".join(assistant_parts).strip()
+            if assistant_text:
+                _persist_chat_turn(bot_id, vid, req.message, assistant_text)
 
     return StreamingResponse(
         event_stream(),
@@ -566,6 +625,106 @@ async def bot_sources(
     ]
     sources.sort(key=lambda s: s.url)
     return SourcesResponse(bot_id=bot_id, sources=sources)
+
+
+@app.get(
+    "/bot/{bot_id}/conversations",
+    response_model=ConversationListResponse,
+    tags=["conversations"],
+)
+async def list_bot_conversations(
+    bot_id: str,
+    requester: auth_db.User | None = Depends(require_auth_either),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+):
+    """Owner-only list of a bot's stored conversations, newest first.
+
+    Summaries are NOT generated here (that would fan out an LLM call per row);
+    they appear once the owner opens an individual conversation.
+    """
+    reg = registry.load_registry()
+    entry = reg.get(bot_id)
+    if entry is None:
+        raise HTTPException(404, f"Bot '{bot_id}' not found")
+    _ensure_visible(entry, requester, bot_id)
+
+    convs = await asyncio.to_thread(
+        conversations_db.list_conversations, bot_id, limit, offset
+    )
+    return ConversationListResponse(
+        bot_id=bot_id,
+        conversations=[
+            ConversationSummary(
+                id=c.id,
+                channel=c.channel,  # type: ignore[arg-type]
+                visitor_id=c.visitor_id,
+                started_at=c.started_at,
+                last_at=c.last_at,
+                message_count=c.message_count,
+                summary=c.summary,
+            )
+            for c in convs
+        ],
+    )
+
+
+@app.get(
+    "/bot/{bot_id}/conversations/{conversation_id}",
+    response_model=ConversationDetailResponse,
+    tags=["conversations"],
+)
+async def get_bot_conversation(
+    bot_id: str,
+    conversation_id: str,
+    requester: auth_db.User | None = Depends(require_auth_either),
+):
+    """Owner-only full transcript. Generates (and caches) the AI summary
+    on demand when it's missing or stale."""
+    reg = registry.load_registry()
+    entry = reg.get(bot_id)
+    if entry is None:
+        raise HTTPException(404, f"Bot '{bot_id}' not found")
+    _ensure_visible(entry, requester, bot_id)
+
+    loaded = await asyncio.to_thread(
+        conversations_db.get_conversation, conversation_id
+    )
+    if loaded is None:
+        raise HTTPException(404, f"Conversation '{conversation_id}' not found")
+    conv, messages = loaded
+    # A conversation id is global; make sure it actually belongs to this bot so
+    # one owner can't read another bot's transcript by guessing the id.
+    if conv.bot_id != bot_id:
+        raise HTTPException(404, f"Conversation '{conversation_id}' not found")
+
+    summary = conv.summary
+    if await asyncio.to_thread(conversations_db.needs_summary, conversation_id):
+        generated = await asyncio.to_thread(
+            conversations_db.summarize_conversation, conversation_id
+        )
+        if generated:
+            summary = generated
+
+    return ConversationDetailResponse(
+        id=conv.id,
+        bot_id=conv.bot_id,
+        channel=conv.channel,  # type: ignore[arg-type]
+        visitor_id=conv.visitor_id,
+        started_at=conv.started_at,
+        last_at=conv.last_at,
+        message_count=conv.message_count,
+        summary=summary,
+        messages=[
+            ConversationMessage(
+                id=m.id,
+                role=m.role,  # type: ignore[arg-type]
+                content=m.content,
+                created_at=m.created_at,
+            )
+            for m in messages
+        ],
+    )
 
 
 @app.post(

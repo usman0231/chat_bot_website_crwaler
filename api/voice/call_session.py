@@ -6,6 +6,7 @@ to match the chat endpoint), and detected language across the call.
 
 from __future__ import annotations
 
+import asyncio
 from enum import Enum
 
 
@@ -28,6 +29,11 @@ class CallSession:
         self.detected_language = "en"
         self.conversation_history: list[dict] = []
         self.turn_count = 0
+        # Stored-conversation id for this call (lazily created on the first
+        # persisted turn) plus a lock that serialises the fire-and-forget
+        # persistence tasks so concurrent turns can't create duplicate rows.
+        self.stored_conversation_id: str | None = None
+        self.persist_lock = asyncio.Lock()
 
     def add_turn(self, user_text: str, bot_text: str) -> None:
         self.conversation_history.append({"role": "user", "content": user_text})

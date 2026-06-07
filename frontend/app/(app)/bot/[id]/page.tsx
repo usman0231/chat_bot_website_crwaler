@@ -13,6 +13,7 @@ import {
   Code2,
   ExternalLink,
   FileText,
+  Inbox,
   MessageSquare,
   MessagesSquare,
   Phone,
@@ -27,14 +28,23 @@ import { cn, timeAgo } from "@/lib/utils";
 import { ApiTab } from "./_components/api-tab";
 import { CallTab } from "./_components/call-tab";
 import { ChatTab } from "./_components/chat-tab";
+import { ConversationsTab } from "./_components/conversations-tab";
 import { QuestionsTab } from "./_components/questions-tab";
 import { SettingsTab } from "./_components/settings-tab";
 import { SourcesTab } from "./_components/sources-tab";
 
-type TabKey = "chat" | "call" | "api" | "sources" | "questions" | "settings";
+type TabKey =
+  | "chat"
+  | "conversations"
+  | "call"
+  | "api"
+  | "sources"
+  | "questions"
+  | "settings";
 
 const VALID_TABS = new Set<TabKey>([
   "chat",
+  "conversations",
   "call",
   "api",
   "sources",
@@ -302,6 +312,10 @@ function BotDetailReady({
               <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />
               Chat
             </TabsTrigger>
+            <TabsTrigger value="conversations">
+              <Inbox className="h-3.5 w-3.5" aria-hidden="true" />
+              Conversations
+            </TabsTrigger>
             <TabsTrigger value="call">
               <Phone className="h-3.5 w-3.5" aria-hidden="true" />
               Call
@@ -347,6 +361,9 @@ function BotDetailReady({
               </p>
             </div>
           )}
+        </TabsContent>
+        <TabsContent value="conversations" className="mt-6">
+          <ConversationsTab botId={bot.bot_id} websiteName={bot.website_name} />
         </TabsContent>
         <TabsContent value="call" className="mt-6">
           <CallTab

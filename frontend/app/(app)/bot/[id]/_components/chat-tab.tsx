@@ -51,6 +51,22 @@ function storageKey(botId: string) {
   return `chat-history-${botId}`;
 }
 
+// Stable anonymous id so successive messages thread into one stored
+// conversation the bot owner can review. Persisted across reloads.
+function getVisitorId(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  try {
+    let id = window.localStorage.getItem("sitebot-visitor-id");
+    if (!id) {
+      id = `vis_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
+      window.localStorage.setItem("sitebot-visitor-id", id);
+    }
+    return id;
+  } catch {
+    return undefined;
+  }
+}
+
 function loadHistory(botId: string): ChatMessage[] {
   if (typeof window === "undefined") return [];
   try {
@@ -356,7 +372,13 @@ export function ChatTab({
         );
 
       try {
-        const res = await chatBotStream(botId, trimmed, historyToSend);
+        const res = await chatBotStream(
+          botId,
+          trimmed,
+          historyToSend,
+          undefined,
+          getVisitorId(),
+        );
         const reader = res.body?.getReader();
         if (!reader) throw new ApiError(0, "Stream not supported by response");
         const decoder = new TextDecoder();

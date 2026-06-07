@@ -40,12 +40,13 @@ import asyncio
 import base64
 import json
 import logging
+import uuid
 from typing import Any
 
 import numpy as np
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, status
 
-from api import auth_db, registry
+from api import auth_db, conversations_db, registry
 from api.jwt_utils import decode_token
 from api.voice.budget import extract_budget
 from api.voice.call_session import CallSession, CallState
@@ -88,6 +89,41 @@ def _resolve_user(
         if settings.demo_api_key and api_key == settings.demo_api_key:
             return None, True  # legacy admin/widget — anonymous but allowed
     return None, False
+
+
+async def _persist_voice_turn(
+    session: CallSession,
+    bot_id: str,
+    visitor_id: str | None,
+    user_text: str,
+    bot_text: str,
+) -> None:
+    """Save one voice turn (both messages) to the call's conversation.
+
+    Reuses one conversation for the whole call: the id is created on the first
+    turn and cached on the session. Serialised via ``session.persist_lock`` so
+    overlapping fire-and-forget tasks don't race on creation. All DB work runs
+    off the event loop; failures are swallowed so persistence never disrupts a
+    live call.
+    """
+    try:
+        async with session.persist_lock:
+            if session.stored_conversation_id is None:
+                session.stored_conversation_id = await asyncio.to_thread(
+                    conversations_db.create_or_get_conversation,
+                    bot_id,
+                    "voice",
+                    visitor_id,
+                )
+            conv_id = session.stored_conversation_id
+            await asyncio.to_thread(
+                conversations_db.add_message, conv_id, "user", user_text
+            )
+            await asyncio.to_thread(
+                conversations_db.add_message, conv_id, "assistant", bot_text
+            )
+    except Exception:
+        log.warning("Failed to persist voice turn for bot %s", bot_id, exc_info=True)
 
 
 @router.websocket("/call/{bot_id}")
@@ -170,6 +206,10 @@ async def call_endpoint(
         return
 
     session = CallSession(bot_id, website_name)
+    # One conversation per call. A per-call visitor id keeps each call distinct
+    # (a logged-in user phoning twice in 30 min still gets two conversations),
+    # while the session caches the conversation id for intra-call reuse.
+    call_visitor_id = "call_" + uuid.uuid4().hex[:16]
     voice_id: str | None = bot_info.get("voice_id") or None
     log.info("[Call] bot=%s using voice_id: %s", bot_id, voice_id)
 
@@ -343,6 +383,12 @@ async def call_endpoint(
                         continue
 
                     session.add_turn(user_text, bot_text)
+                    # Persist the turn in the background — never block speaking.
+                    asyncio.create_task(
+                        _persist_voice_turn(
+                            session, bot_id, call_visitor_id, user_text, bot_text
+                        )
+                    )
                     session.state = CallState.SPEAKING
                     await _speak(
                         websocket, bot_text, detected_lang, session, voice_id=voice_id

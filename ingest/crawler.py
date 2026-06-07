@@ -22,6 +22,7 @@ import json
 import logging
 import re
 import sys
+import threading
 from collections import deque
 from pathlib import Path
 from typing import Callable, Iterable
@@ -46,6 +47,25 @@ _USER_AGENT = (
 _BLOCKED_RESOURCE_RE = (
     "**/*.{png,jpg,jpeg,gif,svg,webp,ico,woff,woff2,ttf,otf,eot,mp4,webm,mp3}"
 )
+
+# Memory-minimising Chromium flags. The prod box has ~1GB RAM, so we run the
+# chrome-headless-shell as lean as possible:
+#   --single-process / --disable-dev-shm-usage  — critical on low-RAM hosts
+#   --no-sandbox / --disable-setuid-sandbox      — required when running as root
+#   --disable-gpu                                — no GPU on the server anyway
+_CHROMIUM_LAUNCH_ARGS = [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
+    "--single-process",
+]
+
+# Process-wide guard: only ONE crawl (hence one Chromium) runs at a time.
+# Concurrent browsers OOM the 1GB box. A threading.Lock (not asyncio.Lock)
+# because each crawl runs in its own event loop / worker thread — api.main
+# spins up a fresh loop per ingest — so the guard has to hold across loops.
+_CRAWL_LOCK = threading.Lock()
 
 
 # --------------------------------------------------------------------------
@@ -442,11 +462,8 @@ async def crawl(
         pages_total = min(max_pages, len(queue)) if len(queue) > 1 else max_pages
         _report(0, pages_total)
 
-        playwright = await async_playwright().start()
-        browser = None
-        try:
-            browser = await playwright.chromium.launch(headless=True)
-            context = await browser.new_context(user_agent=_USER_AGENT)
+        async def _run_crawl(context) -> None:
+            nonlocal pages_total
 
             async def fetch_one(u: str) -> tuple[str, str | None, list[str]]:
                 async with sem:
@@ -500,16 +517,52 @@ async def crawl(
                             and allowed(link)
                         ):
                             queue.append(link)
-        finally:
-            if browser is not None:
-                try:
-                    await browser.close()
-                except Exception:
-                    pass
+
+        # Acquire the process-wide crawl lock off the event loop so a waiting
+        # crawl parks in a worker thread instead of blocking its own loop.
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, _CRAWL_LOCK.acquire)
+
+        playwright = None
+        browser = None
+        context = None
+        try:
+            playwright = await async_playwright().start()
+            browser = await playwright.chromium.launch(
+                headless=True, args=_CHROMIUM_LAUNCH_ARGS
+            )
+            context = await browser.new_context(user_agent=_USER_AGENT)
             try:
-                await playwright.stop()
+                await asyncio.wait_for(
+                    _run_crawl(context), timeout=settings.crawl_hard_timeout
+                )
+            except (asyncio.TimeoutError, TimeoutError):
+                log.warning(
+                    "Crawl hard timeout (%ds) hit for %s; aborting with %d pages so far",
+                    settings.crawl_hard_timeout,
+                    root_url,
+                    len(results),
+                )
+        finally:
+            # Close in reverse order of creation; never let a teardown error
+            # leave a Chromium process orphaned. The lock is released last.
+            try:
+                if context is not None:
+                    await context.close()
             except Exception:
                 pass
+            try:
+                if browser is not None:
+                    await browser.close()
+            except Exception:
+                pass
+            try:
+                if playwright is not None:
+                    await playwright.stop()
+            except Exception:
+                pass
+            _CRAWL_LOCK.release()
+            log.info("Browser closed, %d pages crawled", len(results))
 
         return deduplicate(results)
 
