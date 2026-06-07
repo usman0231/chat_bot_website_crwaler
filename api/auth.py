@@ -21,7 +21,7 @@ import threading
 import time
 from typing import Any
 
-from fastapi import Header, HTTPException, Request
+from fastapi import Header, HTTPException, Request, Query
 
 from api import auth_db
 from api.jwt_utils import decode_token
@@ -99,6 +99,7 @@ def require_auth_either(
     request: Request,
     authorization: str | None = Header(default=None, alias="Authorization"),
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    api_key_q: str | None = Query(default=None, alias="api_key"),
 ) -> auth_db.User | None:
     """Accept either a Bearer JWT or per-user X-API-Key.
 
@@ -112,12 +113,13 @@ def require_auth_either(
         request.state.user_id = user.id
         return user
 
-    if x_api_key:
-        cached = _cached_user_for_key(x_api_key)
+    key = x_api_key or api_key_q
+    if key:
+        cached = _cached_user_for_key(key)
         if cached is not None:
             request.state.user_id = cached.id
             return cached
-        if settings.demo_api_key and x_api_key == settings.demo_api_key:
+        if settings.demo_api_key and key == settings.demo_api_key:
             # Legacy admin/widget access — no associated user.
             request.state.user_id = None
             return None
